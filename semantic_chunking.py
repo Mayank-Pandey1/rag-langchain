@@ -2,11 +2,12 @@ from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
+from langchain_chroma import Chroma
 
 load_dotenv()
 
 embeddings_model = GoogleGenerativeAIEmbeddings(
-    model = "models/text-embedding-001"
+    model = "models/gemini-embedding-001"
 )
 
 document = """
@@ -59,3 +60,44 @@ for i, chunk in enumerate(recursive_chunks):
     print(f"\n --- Chunk {i+1} - ({len(chunk)} chars) ---")
     print(chunk[:100] + "..." if len(chunk) > 100 else chunk)
 
+semantic_chunker = SemanticChunker(
+    embeddings_model,
+    breakpoint_threshold_type='percentile',
+    breakpoint_threshold_amount=90     #Split at the 90th percentile dissimilarity
+)
+
+semantic_chunks = semantic_chunker.split_text(document)
+print(f"\nSemantic chunks: {len(semantic_chunks)}")
+for i, chunk in enumerate(semantic_chunks):
+    print(f"\n --- Chunk {i+1} - ({len(chunk)} chars) ---")
+    print(chunk[:100] + "..." if len(chunk) > 100 else chunk)
+
+
+recursive_vectorstore = Chroma.from_texts(
+    recursive_chunks,
+    embeddings_model,
+    collection_name="Recursive_chunk_embeddings"
+)
+
+semantic_vectorstore = Chroma.from_texts(
+    semantic_chunks,
+    embeddings_model,
+    collection_name="semantic_chunks_embeddings"
+)
+
+test_queries = [
+    "How do I authenticate with OAuth?",
+    "What happens when I hit the rate limit?",
+    "How are webhooks secured?",
+    "What formats are errors returned in?"
+]
+
+def test_retrieval(query, vectorstore, name):
+    results = vectorstore.similarity_search(query, k = 1)
+    print(f"\n{name} - Query: \"{query}\"")
+    print(f"Retrieved: {results[0].page_content[:150]}...")
+    return results[0].page_content
+
+for query in test_queries:
+    recursive_result = test_retrieval(query, recursive_vectorstore, 'RECURSIVE')
+    semantic_result = test_retrieval(query, semantic_vectorstore, 'SEMANTIC')
