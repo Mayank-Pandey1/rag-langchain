@@ -204,5 +204,51 @@ def demo_basic_rag():
         print(f"A: {answer}\n")
 
 
+def rag_with_sources():
+    vector_store = create_kb()
+    retriever = vector_store.as_retriever(search_type = "similarity", search_kwargs= {"k": 2})
+
+    llm = ChatGoogleGenerativeAI(
+        model = "gemini-2.5-flash",
+        temperature = 0.3
+    )
+
+    prompt = ChatPromptTemplate.from_template(
+        """
+        Answer the question based on the below context. Include the sources you used.
+        {context}
+
+        Question: {question}
+        Answer (Include sources): 
+
+        Make sure to answer in concise manner,
+        and if you don't know just say I don't know
+        """
+    )
+
+    def format_docs_with_sources(docs):
+        formatted = []
+        for i, doc in enumerate(docs):
+            source = doc.metadata.get("source", "unknown")
+            formatted.append(f"[{i+1}] {source}:\n{doc.page_content}")
+        return "\n\n".join(formatted)
+    
+    rag_chain = (
+        {"context": retriever | format_docs_with_sources,
+         "question": RunnablePassthrough()
+        }
+        | prompt 
+        | llm
+        | StrOutputParser()
+    )
+
+    print("RAG WITH SOURCES Demo: \n")
+        
+    answer = rag_chain.invoke("What are the different components of Langchain?")
+    print(f"Q: What are the core components")
+    print(f"A: {answer}\n")
+
+        
+
 if __name__ == "__main__":
-    demo_basic_rag()
+    rag_with_sources()
